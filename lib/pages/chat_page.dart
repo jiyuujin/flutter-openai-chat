@@ -183,12 +183,27 @@ class _MessageBarState extends State<_MessageBar> {
       String result = response.data['choices'][0]['message']['content'];
       setState(() {
         answer = result;
+        final myUserId = supabase.auth.currentUser!.id;
+        sendMessage(myUserId, answer);
       });
     } catch (e) {
       String result = e.toString();
       setState(() {
         answer = result;
       });
+    }
+  }
+
+  void sendMessage(String myUserId, String message) async {
+    try {
+      await supabase.from('messages').insert({
+        'profile_id': myUserId,
+        'content': message,
+      });
+    } on PostgrestException catch (error) {
+      context.showErrorSnackBar(message: error.message);
+    } catch (_) {
+      context.showErrorSnackBar(message: unexpectedErrorMessage);
     }
   }
 
@@ -200,16 +215,7 @@ class _MessageBarState extends State<_MessageBar> {
       return;
     }
     _textController.clear();
-    try {
-      await supabase.from('messages').insert({
-        'profile_id': myUserId,
-        'content': text,
-      });
-    } on PostgrestException catch (error) {
-      context.showErrorSnackBar(message: error.message);
-    } catch (_) {
-      context.showErrorSnackBar(message: unexpectedErrorMessage);
-    }
+    sendMessage(myUserId, text);
 
     if (!isGpt) return;
 
