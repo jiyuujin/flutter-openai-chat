@@ -1,12 +1,16 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-
 import 'package:my_chat_app/models/message.dart';
 import 'package:my_chat_app/models/profile.dart';
 import 'package:my_chat_app/utils/constants.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart';
+
+String OPENAI_CHAT_COMPLETIONS_API =
+    'https://api.openai.com/v1/chat/completions';
+String OPENAI_API_KEY = 'OPENAI_API_KEY';
 
 /// Page to chat with someone.
 ///
@@ -112,6 +116,8 @@ class _MessageBar extends StatefulWidget {
 class _MessageBarState extends State<_MessageBar> {
   late final TextEditingController _textController;
 
+  String answer = '';
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -158,8 +164,37 @@ class _MessageBarState extends State<_MessageBar> {
     super.dispose();
   }
 
+  void requestChatGPT(List<Map<String, String>> messages) async {
+    Dio dio = Dio();
+    dio.options.headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $OPENAI_API_KEY'
+    };
+
+    try {
+      Response response = await dio.post(
+        OPENAI_CHAT_COMPLETIONS_API,
+        data: {
+          'model': 'gpt-3.5-turbo',
+          'messages': messages,
+        },
+      );
+
+      String result = response.data['choices'][0]['message']['content'];
+      setState(() {
+        answer = result;
+      });
+    } catch (e) {
+      String result = e.toString();
+      setState(() {
+        answer = result;
+      });
+    }
+  }
+
   void _submitMessage() async {
     final text = _textController.text;
+    final isGpt = text.substring(0, 3) == '/ai';
     final myUserId = supabase.auth.currentUser!.id;
     if (text.isEmpty) {
       return;
@@ -175,6 +210,16 @@ class _MessageBarState extends State<_MessageBar> {
     } catch (_) {
       context.showErrorSnackBar(message: unexpectedErrorMessage);
     }
+
+    if (!isGpt) return;
+
+    String target = text.substring(4);
+    requestChatGPT([
+      {
+        'role': 'user',
+        'content': target,
+      }
+    ]);
   }
 }
 
