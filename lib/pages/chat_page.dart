@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:my_chat_app/hooks/use_supabase.dart';
 import 'package:my_chat_app/models/message.dart';
 import 'package:my_chat_app/models/profile.dart';
 import 'package:my_chat_app/utils/constants.dart';
@@ -115,6 +116,7 @@ class _MessageBar extends StatefulWidget {
 
 class _MessageBarState extends State<_MessageBar> {
   late final TextEditingController _textController;
+  final supabaseHook = useSupabase();
 
   String answer = '';
 
@@ -184,26 +186,13 @@ class _MessageBarState extends State<_MessageBar> {
       setState(() {
         answer = result;
         final myUserId = supabase.auth.currentUser!.id;
-        sendMessage(myUserId, answer);
+        supabaseHook.sendMessage(myUserId, answer);
       });
     } catch (e) {
       String result = e.toString();
       setState(() {
         answer = result;
       });
-    }
-  }
-
-  void sendMessage(String myUserId, String message) async {
-    try {
-      await supabase.from('messages').insert({
-        'profile_id': myUserId,
-        'content': message,
-      });
-    } on PostgrestException catch (error) {
-      context.showErrorSnackBar(message: error.message);
-    } catch (_) {
-      context.showErrorSnackBar(message: unexpectedErrorMessage);
     }
   }
 
@@ -215,7 +204,13 @@ class _MessageBarState extends State<_MessageBar> {
       return;
     }
     _textController.clear();
-    sendMessage(myUserId, text);
+    try {
+      supabaseHook.sendMessage(myUserId, text);
+    } on PostgrestException catch (error) {
+      context.showErrorSnackBar(message: error.message);
+    } catch (_) {
+      context.showErrorSnackBar(message: unexpectedErrorMessage);
+    }
 
     if (!isGpt) return;
 
