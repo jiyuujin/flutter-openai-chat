@@ -1,16 +1,13 @@
 import 'dart:async';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:my_chat_app/hooks/use_chatgpt.dart';
+import 'package:my_chat_app/hooks/use_supabase.dart';
 import 'package:my_chat_app/models/message.dart';
 import 'package:my_chat_app/models/profile.dart';
 import 'package:my_chat_app/utils/constants.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart';
-
-String OPENAI_CHAT_COMPLETIONS_API =
-    'https://api.openai.com/v1/chat/completions';
-String OPENAI_API_KEY = 'OPENAI_API_KEY';
 
 /// Page to chat with someone.
 ///
@@ -115,6 +112,8 @@ class _MessageBar extends StatefulWidget {
 
 class _MessageBarState extends State<_MessageBar> {
   late final TextEditingController _textController;
+  final supabaseHook = useSupabase();
+  final chatGPTHook = useChatGPT();
 
   String answer = '';
 
@@ -164,49 +163,6 @@ class _MessageBarState extends State<_MessageBar> {
     super.dispose();
   }
 
-  void requestChatGPT(List<Map<String, String>> messages) async {
-    Dio dio = Dio();
-    dio.options.headers = {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $OPENAI_API_KEY'
-    };
-
-    try {
-      Response response = await dio.post(
-        OPENAI_CHAT_COMPLETIONS_API,
-        data: {
-          'model': 'gpt-3.5-turbo',
-          'messages': messages,
-        },
-      );
-
-      String result = response.data['choices'][0]['message']['content'];
-      setState(() {
-        answer = result;
-        final myUserId = supabase.auth.currentUser!.id;
-        sendMessage(myUserId, answer);
-      });
-    } catch (e) {
-      String result = e.toString();
-      setState(() {
-        answer = result;
-      });
-    }
-  }
-
-  void sendMessage(String myUserId, String message) async {
-    try {
-      await supabase.from('messages').insert({
-        'profile_id': myUserId,
-        'content': message,
-      });
-    } on PostgrestException catch (error) {
-      context.showErrorSnackBar(message: error.message);
-    } catch (_) {
-      context.showErrorSnackBar(message: unexpectedErrorMessage);
-    }
-  }
-
   void _submitMessage() async {
     final text = _textController.text;
     final isGpt = text.substring(0, 3) == '/ai';
@@ -215,17 +171,36 @@ class _MessageBarState extends State<_MessageBar> {
       return;
     }
     _textController.clear();
-    sendMessage(myUserId, text);
+    try {
+      supabaseHook.sendMessage(myUserId, text);
+    } on PostgrestException catch (error) {
+      context.showErrorSnackBar(message: error.message);
+    } catch (_) {
+      context.showErrorSnackBar(message: unexpectedErrorMessage);
+    }
 
     if (!isGpt) return;
 
     String target = text.substring(4);
-    requestChatGPT([
-      {
-        'role': 'user',
-        'content': target,
-      }
-    ]);
+    try {
+      chatGPTHook.requestChatGPT([
+        {
+          'role': 'user',
+          'content': target,
+        }
+      ]).then((String result) => {
+            setState(() {
+              answer = result;
+
+              supabaseHook.sendMessage(myUserId, answer);
+            })
+          });
+    } catch (e) {
+      String result = e.toString();
+      setState(() {
+        answer = result;
+      });
+    }
   }
 }
 
